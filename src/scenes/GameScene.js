@@ -32,6 +32,61 @@ export class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // UI nâng cấp chỉ số (góc dưới trái)
+        this.statList = [
+            { key: 'healthRegen', label: 'Health Regen', color: 0xffc266 },
+            { key: 'maxHealth', label: 'Max Health', color: 0xe066ff },
+            { key: 'bodyDamage', label: 'Body Damage', color: 0xff66c2 },
+            { key: 'bulletSpeed', label: 'Bullet Speed', color: 0x66b3ff },
+            { key: 'bulletPen', label: 'Bullet Penetration', color: 0xffe066 },
+            { key: 'bulletDamage', label: 'Bullet Damage', color: 0xff6666 },
+            { key: 'reloadSpeed', label: 'Reload', color: 0x66ffd9 },
+            { key: 'speed', label: 'Movement Speed', color: 0x66ff99 },
+        ];
+        this.statUpgradePanel = this.add.container(180, 540).setVisible(false); // Góc dưới trái
+        // Nền panel nhỏ gọn hơn
+        const statBg = this.add.rectangle(0, 0, 220, 310, 0x232347, 0.98).setOrigin(0.5).setStrokeStyle(3, 0x00ffd0);
+        this.statUpgradePanel.add(statBg);
+        // Hiển thị số điểm nâng cấp còn lại ở góc trên phải, nhỏ hơn
+        this.upgradePointText = this.add.text(90, -140, '', {
+            fontFamily: 'Montserrat, Arial, sans-serif', fontSize: '28px', fontStyle: 'bold', color: '#fff', stroke: '#232347', strokeThickness: 5
+        }).setOrigin(1, 0);
+        this.statUpgradePanel.add(this.upgradePointText);
+        // Tạo từng dòng chỉ số
+        this.statRows = [];
+        for (let i = 0; i < this.statList.length; i++) {
+            const y = -100 + i * 32;
+            // Nền dòng
+            const rowBg = this.add.rectangle(0, y, 195, 26, 0x232347, 0.7).setOrigin(0.5).setStrokeStyle(2, 0x222222);
+            this.statUpgradePanel.add(rowBg);
+            // Label
+            const label = this.add.text(-70, y, this.statList[i].label, {
+                fontFamily: 'Montserrat, Arial, sans-serif', fontSize: '13px', color: '#fff', fontStyle: 'bold'
+            }).setOrigin(0, 0.5);
+            this.statUpgradePanel.add(label);
+            // Phím tắt
+            const keyNum = `[${i + 1}]`;
+            const keyText = this.add.text(25, y, keyNum, {
+                fontFamily: 'Montserrat, Arial, sans-serif', fontSize: '12px', color: '#fff', fontStyle: 'bold', backgroundColor: '#222', padding: { left: 3, right: 3, top: 1, bottom: 1 }
+            }).setOrigin(0.5);
+            this.statUpgradePanel.add(keyText);
+            // Nút +
+            const plusBtn = this.add.rectangle(60, y, 22, 22, this.statList[i].color, 1).setOrigin(0.5).setStrokeStyle(2, 0xffffff).setInteractive({ useHandCursor: true });
+            const plusIcon = this.add.text(60, y, '+', { fontFamily: 'Montserrat, Arial, sans-serif', fontSize: '16px', color: '#232347', fontStyle: 'bold' }).setOrigin(0.5);
+            plusBtn.on('pointerdown', () => this.tryUpgradeStat(i));
+            this.statUpgradePanel.add(plusBtn);
+            this.statUpgradePanel.add(plusIcon);
+            this.statRows.push({ rowBg, label, keyText, plusBtn, plusIcon });
+        }
+        // Lắng nghe phím tắt nâng cấp chỉ số (1-8)
+        for (let i = 0; i < 8; i++) {
+            this.input.keyboard.on(`keydown-${i + 1}`, () => this.tryUpgradeStat(i));
+        }
+        // Hàm nâng cấp chỉ số qua bảng nhỏ
+
+
+        // Cập nhật UI bảng nâng cấp chỉ số
+
         // Tạo animation nổ
         this.anims.create({
             key: 'explosion',
@@ -47,7 +102,7 @@ export class GameScene extends Phaser.Scene {
         this.bg = this.add.image(640, 360, 'bg');
         this.bg.setDepth(-10);
         // Tank Stats UI
-        this.statsText = this.add.text(16, 100, '', { fontSize: '18px', fill: '#fff' });
+        this.statsText = this.add.text(16, 100, '', { fontSize: '18px', fill: '#fff', fontFamily: 'Montserrat' });
         this.skillText = this.add.text(16, 260, '', { fontSize: '18px', fill: '#0ff' });
         // Player tank vẽ bằng graphics
         this.player = this.physics.add.image(640, 360, null);
@@ -87,21 +142,94 @@ export class GameScene extends Phaser.Scene {
         this.keys = this.input.keyboard.addKeys('W,A,S,D,ONE,TWO,THREE,FOUR');
         this.input.on('pointerdown', this.shoot, this);
 
-        // XP/Level UI
-        this.xpText = this.add.text(16, 16, 'XP: 0 / 100', { fontSize: '20px', fill: '#fff' });
-        this.levelText = this.add.text(16, 40, 'Level: 1', { fontSize: '20px', fill: '#fff' });
+        // Ẩn vùng ví ở góc trên khi vào GameScene
+        const infoBar = document.getElementById('wallet-info-bar');
+        if (infoBar) infoBar.style.display = 'none';
+        const walletAddrDiv = document.getElementById('wallet-address');
+        if (walletAddrDiv) walletAddrDiv.style.display = 'none';
+
+        // XP/Level UI + Avatar + Địa chỉ ví
+        let walletAddress = '';
+        if (window.solana && window.solana.isPhantom && window.solana.publicKey) {
+            walletAddress = window.solana.publicKey.toString();
+        }
+        const shortAddr = walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : '';
+        // Avatar Dicebear
+        const avatarUrl = walletAddress ? `https://api.dicebear.com/7.x/pixel-art/svg?seed=${walletAddress}` : '';
+        this.xpText = this.add.text(16, 16, '', { fontSize: '20px', fill: '#fff', fontFamily: 'Montserrat' });
+        if (avatarUrl) {
+            this.avatarImg = this.add.image(180, 26, '').setOrigin(0, 0).setDisplaySize(28, 28);
+            this.avatarImg.setTexture('avatar-dummy'); // dummy, sẽ load lại sau
+            // Tải avatar từ url
+            this.textures.remove('avatar-dicebear');
+            this.textures.addBase64('avatar-dicebear', '');
+            fetch(avatarUrl).then(r => r.blob()).then(blob => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    this.textures.addBase64('avatar-dicebear', reader.result);
+                    this.avatarImg.setTexture('avatar-dicebear');
+                };
+                reader.readAsDataURL(blob);
+            });
+        }
+        this.levelText = this.add.text(16, 40, 'Level: 1', { fontSize: '20px', fill: '#fff', fontFamily: 'Montserrat' });
 
         // Upgrade UI (ẩn mặc định)
         this.upgradePanel = this.add.container(640, 360).setVisible(false);
-        const panelBg = this.add.rectangle(0, 0, 500, 300, 0x222244, 0.95).setStrokeStyle(4, 0xffffff);
-        this.upgradeText = this.add.text(0, -120, 'Chọn nâng cấp (1-4):', { fontSize: '28px', fill: '#fff' }).setOrigin(0.5);
+        // Nền panel bo góc, bóng đổ
+        // Vẽ bóng đổ phía sau panel
+        const shadowBg = this.add.rectangle(8, 12, 440, 280, 0x000000, 0.28)
+            .setOrigin(0.5)
+            .setDepth(9);
+        const panelBg = this.add.rectangle(0, 0, 440, 280, 0x232347, 0.98)
+            .setStrokeStyle(3, 0x00ffd0)
+            .setOrigin(0.5)
+            .setDepth(10);
+
+        // Tiêu đề
+        this.upgradeText = this.add.text(0, -110, 'Chọn nâng cấp (1-4):', {
+            fontFamily: 'Montserrat, Arial, sans-serif',
+            fontSize: '26px',
+            fontStyle: 'bold',
+            color: '#fff',
+            align: 'center',
+            padding: { left: 0, right: 0, top: 8, bottom: 8 },
+            shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 4, fill: true }
+        }).setOrigin(0.5);
+
+        // Các lựa chọn nâng cấp
         this.upgradeOptions = [];
+        this.upgradeOptionBgs = [];
         for (let i = 0; i < 4; i++) {
-            const t = this.add.text(0, -40 + i * 60, '', { fontSize: '24px', fill: '#ff0' }).setOrigin(0.5);
+            const optBg = this.add.rectangle(0, -35 + i * 55, 370, 44, 0x2e2e5a, 0.92)
+                .setStrokeStyle(2, 0x00ffd0)
+                .setOrigin(0.5)
+                .setInteractive({ useHandCursor: true });
+            const t = this.add.text(0, -35 + i * 55, '', {
+                fontFamily: 'Montserrat, Arial, sans-serif',
+                fontSize: '22px',
+                color: '#fffa90',
+                align: 'center',
+                padding: { left: 0, right: 0, top: 6, bottom: 6 },
+                wordWrap: { width: 340, useAdvancedWrap: true },
+                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, fill: true }
+            }).setOrigin(0.5);
+            optBg.on('pointerover', () => {
+                optBg.setFillStyle(0x00ffd0, 0.18);
+                optBg.setStrokeStyle(3, 0xffffff);
+                t.setColor('#fff');
+            });
+            optBg.on('pointerout', () => {
+                optBg.setFillStyle(0x2e2e5a, 0.92);
+                optBg.setStrokeStyle(2, 0x00ffd0);
+                t.setColor('#fffa90');
+            });
+            optBg.on('pointerdown', () => this.chooseUpgrade(i));
             this.upgradeOptions.push(t);
-            this.upgradePanel.add(t);
+            this.upgradeOptionBgs.push(optBg);
         }
-        this.upgradePanel.add([panelBg, this.upgradeText, ...this.upgradeOptions]);
+        // Thêm các thành phần vào đúng thứ tự: shadowBg, panelBg, tiêu đề, các option bg, các option text
+        this.upgradePanel.add([shadowBg, panelBg, this.upgradeText, ...this.upgradeOptionBgs, ...this.upgradeOptions]);
 
         // Collisions
         this.physics.add.overlap(this.bullets, this.enemies, this.hitEnemy, null, this);
@@ -113,8 +241,41 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-THREE', () => this.chooseUpgrade(2));
         this.input.keyboard.on('keydown-FOUR', () => this.chooseUpgrade(3));
     }
-
+    tryUpgradeStat(idx) {
+        if (this.upgradePoints > 0 && this.statList[idx]) {
+            const key = this.statList[idx].key;
+            if (key === 'maxHealth') {
+                this.player.maxHealth += 20;
+                this.player.health += 20;
+            } else if (key === 'reloadSpeed') {
+                this.player.reloadSpeed = Math.max(80, this.player.reloadSpeed - 20);
+            } else if (key === 'bulletPen') {
+                this.player.canPierce = true;
+            } else {
+                if (typeof this.player[key] === 'number') this.player[key] += 2;
+            }
+            this.upgradePoints--;
+            this.updateStatUpgradePanel();
+        }
+    }
+    updateStatUpgradePanel() {
+        if (this.upgradePoints > 0) {
+            this.statUpgradePanel.setVisible(true);
+            this.upgradePointText.setText('x' + this.upgradePoints);
+        } else {
+            this.statUpgradePanel.setVisible(false);
+        }
+    }
     update(time, delta) {
+        // Cập nhật địa chỉ ví nếu có thay đổi
+        let walletAddress = '';
+        if (window.solana && window.solana.isPhantom && window.solana.publicKey) {
+            walletAddress = window.solana.publicKey.toString();
+        }
+        const shortAddr = walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : '';
+        let xpText = `XP: ${this.xp} / ${this.xpToLevel}`;
+        if (shortAddr) xpText += `   ${shortAddr}`;
+        this.xpText.setText(xpText);
         // Player Health Bar
         this.playerHealthBar.clear();
         const barWidth = 200, barHeight = 18;
@@ -348,7 +509,12 @@ export class GameScene extends Phaser.Scene {
             if (this.sfxExplosion) this.sfxExplosion.play({ volume: 0.5 });
             if (enemy.healthBar) enemy.healthBar.destroy();
             enemy.destroy();
-            this.gainXP(GameEnum.XP.PER_ENEMY);
+            // EXP theo cấp bot
+            let exp = 20;
+            if (enemy.enemyLevel === 2) exp = 40;
+            else if (enemy.enemyLevel === 3) exp = 60;
+            else if (enemy.enemyLevel === 4) exp = 100;
+            this.gainXP(exp);
             // Spawn new enemy
             this.time.delayedCall(1000, () => this.spawnEnemy(), [], this);
         }
@@ -374,7 +540,7 @@ export class GameScene extends Phaser.Scene {
             this.level++;
             this.upgradePoints++;
             this.xpToLevel = Math.floor(this.xpToLevel * 1.15);
-            // Thêm mốc chọn class tank ở level 5
+            // Chỉ hiện dialog chọn class ở các mốc đặc biệt
             if (this.level === 5) {
                 this.showClassUpgradeUI(5);
             } else if (this.level === 15) {
@@ -383,12 +549,11 @@ export class GameScene extends Phaser.Scene {
                 this.showClassUpgradeUI(30);
             } else if (this.level === 45) {
                 this.showClassUpgradeUI(45);
-            } else {
-                this.showUpgradeUI();
             }
         }
         this.xpText.setText(`XP: ${Math.floor(this.xp)} / ${this.xpToLevel}`);
         this.levelText.setText(`Level: ${this.level}`);
+        if (this.updateStatUpgradePanel) this.updateStatUpgradePanel();
     }
 
     // UI chọn class tank khi đạt mốc level
