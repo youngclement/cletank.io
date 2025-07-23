@@ -1,4 +1,6 @@
 
+
+import { connectSolanaWallet } from './solanaWallet.js';
 import { Start } from './scenes/Start.js';
 import { GameScene } from './scenes/GameScene.js';
 
@@ -28,3 +30,17 @@ const config = {
 }
 
 new Phaser.Game(config);
+
+// Xử lý nút kết nối ví
+window.addEventListener('DOMContentLoaded', () => {
+    // Auto connect wallet nếu user đã từng approve
+    if (window.solana && window.solana.isPhantom) {
+        window.solana.connect({ onlyIfTrusted: true }).then(() => {
+            connectSolanaWallet();
+        });
+    }
+    const btn = document.getElementById('connect-wallet-btn');
+    if (btn) {
+        btn.addEventListener('click', connectSolanaWallet);
+    }
+});
