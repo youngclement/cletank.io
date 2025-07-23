@@ -4,7 +4,8 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>my-frist-app</title>
-    
+        <!-- Google Fonts: Montserrat -->
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
         <style>
             /* Reset CSS: Please avoid making changes here unless you know what you're doing :) */
             *,
@@ -22,7 +23,7 @@
     
             body {
                 line-height: 1;
-                font-family: Arial, sans-serif;
+                font-family: 'Montserrat', Arial, sans-serif;
                 background-color: #040218;
             }
     
@@ -42,9 +43,12 @@
             }
         </style>
     </head>
+
     <body>
+        <div id="wallet-info-bar" style="position:fixed;top:10px;left:10px;z-index:1000;display:flex;align-items:center;gap:10px;"></div>
+        <button id="connect-wallet-btn">Kết nối ví Solana</button>
+        <div id="wallet-address" style="margin-top:10px;color:#2e7d32;font-weight:bold;"></div>
         <div id="game-container"></div>
         <script src="./phaser.js"></script>
         <script type="module" src="./src/main.js"></script>
     </body>
-    </html>
