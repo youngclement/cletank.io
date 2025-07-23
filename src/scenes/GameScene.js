@@ -6,6 +6,8 @@ import { UpgradeConfig } from '../consts/UpgradeConfig.js';
 export class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
+        this.displayedHealth = 0;
+        this.displayedXP = 0;
         this.player = null;
         this.cursors = null;
         this.keys = {};
@@ -32,6 +34,25 @@ export class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // Thanh máu (HP bar) ở góc trên trái
+        this.playerHealthBarX = 16;
+        this.playerHealthBarY = 28;
+        this.playerHealthBarWidth = 200;
+        this.playerHealthBarHeight = 18;
+        this.playerHealthBar = this.add.graphics();
+        this.playerHealthBar.setDepth(10);
+        this.playerHealthBarText = this.add.text(this.playerHealthBarX + this.playerHealthBarWidth / 2, this.playerHealthBarY + this.playerHealthBarHeight / 2, '', { fontSize: '15px', fontFamily: 'Montserrat', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+
+        // Thanh XP (và level) ở dưới màn hình, kéo dài 80% chiều rộng
+        this.xpBarWidth = Math.floor(this.sys.game.config.width * 0.8);
+        this.xpBarHeight = 18;
+        this.xpBarX = Math.floor((this.sys.game.config.width - this.xpBarWidth) / 2);
+        this.xpBarY = this.sys.game.config.height - 70; // Đẩy lên trên một chút
+        this.xpBar = this.add.graphics();
+        this.xpBar.setDepth(10);
+        this.xpBarText = this.add.text(this.xpBarX + this.xpBarWidth / 2, this.xpBarY + this.xpBarHeight / 2 + 10, '', { fontSize: '15px', fontFamily: 'Montserrat', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+        this.levelBarText = this.add.text(this.xpBarX + this.xpBarWidth / 2, this.xpBarY + 2, '', { fontSize: '16px', fontFamily: 'Montserrat', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5, 0);
+        if (this.xpBarTextSmall) this.xpBarTextSmall.destroy();
         // UI nâng cấp chỉ số (góc dưới trái)
         this.statList = [
             { key: 'healthRegen', label: 'Health Regen', color: 0xffc266 },
@@ -123,9 +144,10 @@ export class GameScene extends Phaser.Scene {
         this.playerGraphics = this.add.graphics();
         this.playerGraphics.setDepth(1);
 
-        // Player Health Bar
+        // Thanh máu (HP bar)
         this.playerHealthBar = this.add.graphics();
-        this.playerHealthBar.setDepth(2);
+        this.playerHealthBar.setDepth(10);
+        this.playerHealthBarText = this.add.text(116, 80, '', { fontSize: '15px', fontFamily: 'Montserrat', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
         // Bullets
         this.bullets = this.physics.add.group({
             classType: Phaser.Physics.Arcade.Image,
@@ -156,23 +178,7 @@ export class GameScene extends Phaser.Scene {
         const shortAddr = walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : '';
         // Avatar Dicebear
         const avatarUrl = walletAddress ? `https://api.dicebear.com/7.x/pixel-art/svg?seed=${walletAddress}` : '';
-        this.xpText = this.add.text(16, 16, '', { fontSize: '20px', fill: '#fff', fontFamily: 'Montserrat' });
-        if (avatarUrl) {
-            this.avatarImg = this.add.image(180, 26, '').setOrigin(0, 0).setDisplaySize(28, 28);
-            this.avatarImg.setTexture('avatar-dummy'); // dummy, sẽ load lại sau
-            // Tải avatar từ url
-            this.textures.remove('avatar-dicebear');
-            this.textures.addBase64('avatar-dicebear', '');
-            fetch(avatarUrl).then(r => r.blob()).then(blob => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    this.textures.addBase64('avatar-dicebear', reader.result);
-                    this.avatarImg.setTexture('avatar-dicebear');
-                };
-                reader.readAsDataURL(blob);
-            });
-        }
-        this.levelText = this.add.text(16, 40, 'Level: 1', { fontSize: '20px', fill: '#fff', fontFamily: 'Montserrat' });
+        // ...existing code...
 
         // Upgrade UI (ẩn mặc định)
         this.upgradePanel = this.add.container(640, 360).setVisible(false);
@@ -267,25 +273,56 @@ export class GameScene extends Phaser.Scene {
         }
     }
     update(time, delta) {
+        // Không còn XP text nhỏ dưới thanh
         // Cập nhật địa chỉ ví nếu có thay đổi
         let walletAddress = '';
         if (window.solana && window.solana.isPhantom && window.solana.publicKey) {
             walletAddress = window.solana.publicKey.toString();
         }
         const shortAddr = walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : '';
-        let xpText = `XP: ${this.xp} / ${this.xpToLevel}`;
-        if (shortAddr) xpText += `   ${shortAddr}`;
-        this.xpText.setText(xpText);
-        // Player Health Bar
+        // Hiệu ứng mượt cho máu và xp
+        // Thanh máu
+        const barWidth = this.playerHealthBarWidth;
+        const barHeight = this.playerHealthBarHeight;
+        // Tween máu
+        if (this.displayedHealth === undefined) this.displayedHealth = this.player.health;
+        if (Math.abs(this.displayedHealth - this.player.health) > 0.5) {
+            this.displayedHealth += (this.player.health - this.displayedHealth) * Math.min(0.18, delta / 200);
+        } else {
+            this.displayedHealth = this.player.health;
+        }
+        // Tween XP
+        if (this.displayedXP === undefined) this.displayedXP = this.xp;
+        if (Math.abs(this.displayedXP - this.xp) > 0.5) {
+            this.displayedXP += (this.xp - this.displayedXP) * Math.min(0.18, delta / 200);
+        } else {
+            this.displayedXP = this.xp;
+        }
+        // HP Bar (trên)
+        const hpPercent = Phaser.Math.Clamp(this.displayedHealth / this.player.maxHealth, 0, 1);
         this.playerHealthBar.clear();
-        const barWidth = 200, barHeight = 18;
-        const hpPercent = Phaser.Math.Clamp(this.player.health / this.player.maxHealth, 0, 1);
         this.playerHealthBar.fillStyle(0x000000);
-        this.playerHealthBar.fillRect(16, 70, barWidth, barHeight);
+        this.playerHealthBar.fillRect(this.playerHealthBarX, this.playerHealthBarY, barWidth, barHeight);
         this.playerHealthBar.fillStyle(0x00ff00);
-        this.playerHealthBar.fillRect(16, 70, barWidth * hpPercent, barHeight);
+        this.playerHealthBar.fillRect(this.playerHealthBarX, this.playerHealthBarY, barWidth * hpPercent, barHeight);
         this.playerHealthBar.lineStyle(2, 0xffffff);
-        this.playerHealthBar.strokeRect(16, 70, barWidth, barHeight);
+        this.playerHealthBar.strokeRect(this.playerHealthBarX, this.playerHealthBarY, barWidth, barHeight);
+        this.playerHealthBarText.setText(`HP: ${Math.floor(this.displayedHealth)} / ${this.player.maxHealth}`);
+        this.playerHealthBarText.setPosition(this.playerHealthBarX + barWidth / 2, this.playerHealthBarY + barHeight / 2);
+
+        // XP Bar (dưới)
+        const xpPercent = Phaser.Math.Clamp(this.displayedXP / this.xpToLevel, 0, 1);
+        this.xpBar.clear();
+        this.xpBar.fillStyle(0x222244);
+        this.xpBar.fillRect(this.xpBarX, this.xpBarY, this.xpBarWidth, this.xpBarHeight);
+        this.xpBar.fillStyle(0x00bfff);
+        this.xpBar.fillRect(this.xpBarX, this.xpBarY, this.xpBarWidth * xpPercent, this.xpBarHeight);
+        this.xpBar.lineStyle(2, 0xffffff);
+        this.xpBar.strokeRect(this.xpBarX, this.xpBarY, this.xpBarWidth, this.xpBarHeight);
+        this.xpBarText.setText(`XP: ${Math.floor(this.displayedXP)} / ${this.xpToLevel}`);
+        this.xpBarText.setPosition(this.xpBarX + this.xpBarWidth / 2, this.xpBarY + this.xpBarHeight / 2 + 24);
+        this.levelBarText.setText(`LV ${this.level}`);
+        this.levelBarText.setPosition(this.xpBarX + this.xpBarWidth / 2, this.xpBarY - 24);
 
         // Update Tank Stats UI
         let stats = `Class: ${this.player.tankClass}\n`;
@@ -436,9 +473,53 @@ export class GameScene extends Phaser.Scene {
             const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, pointer.worldX, pointer.worldY);
             this.physics.velocityFromRotation(angle, this.player.bulletSpeed, bullet.body.velocity);
             bullet.lifespan = 1000;
+            // Hiệu ứng đặc biệt theo class
+            if (this.player.bulletEffect === 'trail') {
+                bullet.setTint(0x00ffff);
+                if (!bullet.trailEmitter) {
+                    bullet.trailEmitter = this.add.particles('bullet').createEmitter({
+                        speed: 0,
+                        scale: { start: 0.3, end: 0 },
+                        alpha: { start: 0.5, end: 0 },
+                        lifespan: 250,
+                        follow: bullet,
+                        frequency: 30,
+                        tint: 0x00ffff
+                    });
+                }
+                bullet.trailEmitter.start();
+            } else if (this.player.bulletEffect === 'glow') {
+                bullet.setTint(0x00ff00);
+                bullet.setAlpha(1);
+                bullet.setScale(1.1);
+                bullet.setBlendMode(Phaser.BlendModes.ADD);
+            } else if (this.player.bulletEffect === 'heavy') {
+                bullet.setTint(0xff9900);
+                bullet.setScale(1.4);
+                bullet.setAlpha(1);
+                bullet.setBlendMode(Phaser.BlendModes.NORMAL);
+                // Hiệu ứng rung nhẹ
+                this.tweens.add({
+                    targets: bullet,
+                    x: bullet.x + Phaser.Math.Between(-2, 2),
+                    y: bullet.y + Phaser.Math.Between(-2, 2),
+                    duration: 60,
+                    yoyo: true,
+                    repeat: 2
+                });
+            } else {
+                bullet.clearTint();
+                bullet.setAlpha(1);
+                bullet.setScale(1);
+                bullet.setBlendMode(Phaser.BlendModes.NORMAL);
+                if (bullet.trailEmitter) bullet.trailEmitter.stop();
+            }
             bullet.update = function (time, delta) {
                 this.lifespan -= delta;
-                if (this.lifespan <= 0) this.setActive(false).setVisible(false);
+                if (this.lifespan <= 0) {
+                    this.setActive(false).setVisible(false);
+                    if (this.trailEmitter) this.trailEmitter.stop();
+                }
             };
             this.player.lastShot = now;
         }
@@ -551,8 +632,7 @@ export class GameScene extends Phaser.Scene {
                 this.showClassUpgradeUI(45);
             }
         }
-        this.xpText.setText(`XP: ${Math.floor(this.xp)} / ${this.xpToLevel}`);
-        this.levelText.setText(`Level: ${this.level}`);
+        // ...existing code...
         if (this.updateStatUpgradePanel) this.updateStatUpgradePanel();
     }
 
